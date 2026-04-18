@@ -1,0 +1,6 @@
+@NguyenBinhMinh_FBPageAPI_HostAddress = http://localhost:5289
+
+GET {{NguyenBinhMinh_FBPageAPI_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
