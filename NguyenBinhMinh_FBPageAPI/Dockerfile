@@ -1,13 +1,16 @@
 # Build stage
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
 # Copy csproj and restore
-COPY *.csproj ./
+COPY NguyenBinhMinh_FBPageAPI/*.csproj NguyenBinhMinh_FBPageAPI/
+WORKDIR /src/NguyenBinhMinh_FBPageAPI
 RUN dotnet restore
 
 # Copy everything else and publish
-COPY . ./
+WORKDIR /src
+COPY . .
+WORKDIR /src/NguyenBinhMinh_FBPageAPI
 RUN dotnet publish -c Release -o /app/publish /p:UseAppHost=false
 
 # Runtime stage
@@ -16,7 +19,6 @@ WORKDIR /app
 
 COPY --from=build /app/publish .
 
-# Railway / container-friendly port binding
 ENV ASPNETCORE_URLS=http://+:3001
 EXPOSE 3001
 
