@@ -9,10 +9,14 @@ namespace NguyenBinhMinh_FBPageAPI.Services
     {
         private readonly IProducer<Null, string> _producer;
         private readonly KafkaOptions _options;
+        private readonly ILogger<KafkaProducerService> _logger;
 
-        public KafkaProducerService(IOptions<KafkaOptions> options)
+        public KafkaProducerService(
+            IOptions<KafkaOptions> options,
+            ILogger<KafkaProducerService> logger)
         {
             _options = options.Value;
+            _logger = logger;
 
             var config = new ProducerConfig
             {
@@ -26,10 +30,18 @@ namespace NguyenBinhMinh_FBPageAPI.Services
         {
             var payload = JsonSerializer.Serialize(evt);
 
-            await _producer.ProduceAsync(
+            _logger.LogInformation("Sending to Kafka topic {Topic}: {Payload}", _options.TopicRawEvents, payload);
+
+            var result = await _producer.ProduceAsync(
                 _options.TopicRawEvents,
                 new Message<Null, string> { Value = payload },
                 cancellationToken);
+
+            _logger.LogInformation(
+                "Kafka ACK topic={Topic}, partition={Partition}, offset={Offset}",
+                result.Topic,
+                result.Partition,
+                result.Offset);
         }
 
         public void Dispose()

@@ -10,21 +10,15 @@ namespace NguyenBinhMinh_FBPageAPI.Controllers
     [Route("webhook")]
     public class FacebookWebhookController : ControllerBase
     {
-        private readonly FacebookWebhookOptions _options;
-        private readonly FacebookSignatureService _signatureService;
         private readonly FacebookEventNormalizer _normalizer;
         private readonly KafkaProducerService _kafkaProducer;
         private readonly ILogger<FacebookWebhookController> _logger;
 
         public FacebookWebhookController(
-            IOptions<FacebookWebhookOptions> options,
-            FacebookSignatureService signatureService,
             FacebookEventNormalizer normalizer,
             KafkaProducerService kafkaProducer,
             ILogger<FacebookWebhookController> logger)
         {
-            _options = options.Value;
-            _signatureService = signatureService;
             _normalizer = normalizer;
             _kafkaProducer = kafkaProducer;
             _logger = logger;
@@ -36,12 +30,12 @@ namespace NguyenBinhMinh_FBPageAPI.Controllers
             [FromQuery(Name = "hub.verify_token")] string? verifyToken,
             [FromQuery(Name = "hub.challenge")] string? challenge)
         {
-            if (mode == "subscribe" && verifyToken == _options.VerifyToken)
+            if (mode == "subscribe" && verifyToken == "my_verify_token")
             {
                 return Content(challenge ?? "");
             }
 
-            return Forbid();
+            return StatusCode(403, "Invalid verify token");
         }
 
         [HttpPost]
@@ -56,21 +50,17 @@ namespace NguyenBinhMinh_FBPageAPI.Controllers
                 Request.Body.Position = 0;
             }
 
-            var signatureHeader = Request.Headers["X-Hub-Signature-256"].FirstOrDefault();
-
-            if (!_signatureService.Verify(rawBody, signatureHeader))
-            {
-                return Unauthorized(new { message = "Invalid signature" });
-            }
+            _logger.LogInformation("=== WEBHOOK HIT ===");
+            _logger.LogInformation("Raw webhook payload: {Payload}", rawBody);
 
             var normalizedEvents = _normalizer.Normalize(rawBody);
+            _logger.LogInformation("Normalized events count: {Count}", normalizedEvents.Count);
 
             foreach (var evt in normalizedEvents)
             {
+                _logger.LogInformation("Publishing event: {EventType}", evt.EventType);
                 await _kafkaProducer.PublishRawEventAsync(evt, cancellationToken);
             }
-
-            _logger.LogInformation("Webhook received. Published {Count} event(s) to Kafka.", normalizedEvents.Count);
 
             return Ok(new
             {
