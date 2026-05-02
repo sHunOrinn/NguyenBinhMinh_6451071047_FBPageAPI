@@ -20,20 +20,30 @@ namespace NguyenBinhMinh_FBPageAPI.Services
 
             var config = new ProducerConfig
             {
-                BootstrapServers = _options.BootstrapServers
+                BootstrapServers = _options.BootstrapServers,
+                EnableIdempotence = true,
+                Acks = Acks.All
             };
 
             _producer = new ProducerBuilder<Null, string>(config).Build();
         }
 
-        public async Task PublishRawEventAsync(NormalizedEvent evt, CancellationToken cancellationToken = default)
+        public Task PublishRawEventAsync(NormalizedEvent evt, CancellationToken cancellationToken = default)
+        {
+            return PublishAsync(_options.TopicRawEvents, evt, cancellationToken);
+        }
+
+        public Task PublishSendFailedAsync(NormalizedEvent evt, CancellationToken cancellationToken = default)
+        {
+            return PublishAsync(_options.TopicSendFailed, evt, cancellationToken);
+        }
+
+        private async Task PublishAsync(string topic, NormalizedEvent evt, CancellationToken cancellationToken)
         {
             var payload = JsonSerializer.Serialize(evt);
 
-            _logger.LogInformation("Sending to Kafka topic {Topic}: {Payload}", _options.TopicRawEvents, payload);
-
             var result = await _producer.ProduceAsync(
-                _options.TopicRawEvents,
+                topic,
                 new Message<Null, string> { Value = payload },
                 cancellationToken);
 

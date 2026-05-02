@@ -10,15 +10,21 @@ namespace NguyenBinhMinh_FBPageAPI.Controllers
     [Route("webhook")]
     public class FacebookWebhookController : ControllerBase
     {
+        private readonly FacebookWebhookOptions _webhookOptions;
+        private readonly FacebookSignatureService _signatureService;
         private readonly FacebookEventNormalizer _normalizer;
         private readonly KafkaProducerService _kafkaProducer;
         private readonly ILogger<FacebookWebhookController> _logger;
 
         public FacebookWebhookController(
+            IOptions<FacebookWebhookOptions> webhookOptions,
+            FacebookSignatureService signatureService,
             FacebookEventNormalizer normalizer,
             KafkaProducerService kafkaProducer,
             ILogger<FacebookWebhookController> logger)
         {
+            _webhookOptions = webhookOptions.Value;
+            _signatureService = signatureService;
             _normalizer = normalizer;
             _kafkaProducer = kafkaProducer;
             _logger = logger;
@@ -52,6 +58,15 @@ namespace NguyenBinhMinh_FBPageAPI.Controllers
 
             _logger.LogInformation("=== WEBHOOK HIT ===");
             _logger.LogInformation("Raw webhook payload: {Payload}", rawBody);
+
+            var signature = Request.Headers["X-Hub-Signature-256"].FirstOrDefault();
+            
+            if (!string.IsNullOrWhiteSpace(_webhookOptions.AppSecret) &&
+                !_signatureService.Verify(rawBody, signature))
+            {
+                _logger.LogWarning("Invalid Facebook webhook signature");
+                return Unauthorized(new { message = "Invalid signature" });
+            }
 
             var normalizedEvents = _normalizer.Normalize(rawBody);
             _logger.LogInformation("Normalized events count: {Count}", normalizedEvents.Count);

@@ -152,9 +152,9 @@ namespace NguyenBinhMinh_FBPageAPI.Controllers
 
         [HttpGet("{pageId}/insights")]
         public async Task<IActionResult> GetInsights(
-    string pageId,
-    [FromQuery] int days = 7,
-    [FromQuery] string metric = "page_post_engagements")
+        string pageId,
+        [FromQuery] int days = 7,
+        [FromQuery] string metric = "page_post_engagements")
         {
             try
             {

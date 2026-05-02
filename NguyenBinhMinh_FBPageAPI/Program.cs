@@ -17,6 +17,9 @@ builder.Services.Configure<FacebookWebhookOptions>(options =>
         Environment.GetEnvironmentVariable("FB_APP_SECRET") ?? "";
 });
 
+builder.Services.Configure<FacebookOptions>(
+    builder.Configuration.GetSection("Facebook"));
+
 // Services
 builder.Services.AddSingleton<KafkaProducerService>();
 builder.Services.AddSingleton<FacebookSignatureService>();
@@ -26,6 +29,22 @@ builder.Services.Configure<FacebookOptions>(
     builder.Configuration.GetSection("Facebook"));
 
 builder.Services.AddHttpClient();
+
+
+builder.Services.AddSingleton<FacebookSignatureService>();
+builder.Services.AddSingleton<FacebookEventNormalizer>();
+builder.Services.AddSingleton<KafkaProducerService>();
+
+builder.Services.AddSingleton<EventStateStore>();
+builder.Services.AddSingleton<SpamDetectionService>();
+builder.Services.AddSingleton<AiClassificationService>();
+builder.Services.AddSingleton<EventDecisionService>();
+
+builder.Services.AddScoped<FacebookCommentActionService>();
+builder.Services.AddScoped<CoreEventProcessorService>();
+
+builder.Services.AddHostedService<RawEventsConsumerHostedService>();
+builder.Services.AddHostedService<RetryFailedConsumerHostedService>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
