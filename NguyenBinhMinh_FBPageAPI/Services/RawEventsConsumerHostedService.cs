@@ -26,7 +26,7 @@ namespace NguyenBinhMinh_FBPageAPI.Services
             var config = new ConsumerConfig
             {
                 BootstrapServers = _options.BootstrapServers,
-                GroupId = _options.ConsumerGroupId,
+                GroupId = _options.CoreConsumerGroupId,
                 AutoOffsetReset = AutoOffsetReset.Earliest,
                 EnableAutoCommit = false
             };
@@ -35,17 +35,33 @@ namespace NguyenBinhMinh_FBPageAPI.Services
 
             consumer.Subscribe(_options.TopicRawEvents);
 
+            _logger.LogInformation(
+                "RawEventsConsumerHostedService started. Topic: {Topic}, GroupId: {GroupId}",
+                _options.TopicRawEvents,
+                _options.CoreConsumerGroupId);
+
             while (!stoppingToken.IsCancellationRequested)
             {
                 try
                 {
-                    var message = consumer.Consume(stoppingToken);
+                    var consumeResult = consumer.Consume(stoppingToken);
 
-                    var evt = JsonSerializer.Deserialize<NormalizedEvent>(message.Message.Value);
+                    if (consumeResult?.Message?.Value == null)
+                    {
+                        continue;
+                    }
+
+                    var evt = JsonSerializer.Deserialize<NormalizedEvent>(
+                        consumeResult.Message.Value,
+                        new JsonSerializerOptions
+                        {
+                            PropertyNameCaseInsensitive = true
+                        });
 
                     if (evt == null)
                     {
-                        consumer.Commit(message);
+                        _logger.LogWarning("Cannot deserialize raw event message");
+                        consumer.Commit(consumeResult);
                         continue;
                     }
 
@@ -56,7 +72,17 @@ namespace NguyenBinhMinh_FBPageAPI.Services
 
                     await processor.ProcessAsync(evt, stoppingToken);
 
-                    consumer.Commit(message);
+                    consumer.Commit(consumeResult);
+
+                    _logger.LogInformation(
+                        "Raw event processed and committed. EventId: {EventId}, Offset: {Offset}",
+                        evt.EventId,
+                        consumeResult.Offset);
+                }
+                catch (ConsumeException ex)
+                {
+                    _logger.LogError(ex, "Kafka consume error");
+                    await Task.Delay(3000, stoppingToken);
                 }
                 catch (OperationCanceledException)
                 {
@@ -64,12 +90,14 @@ namespace NguyenBinhMinh_FBPageAPI.Services
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Raw events consumer error");
+                    _logger.LogError(ex, "Raw events consumer unexpected error");
                     await Task.Delay(3000, stoppingToken);
                 }
             }
 
             consumer.Close();
+
+            _logger.LogInformation("RawEventsConsumerHostedService stopped");
         }
     }
 }

@@ -7,85 +7,90 @@ namespace NguyenBinhMinh_FBPageAPI.Services
         private readonly SpamDetectionService _spamDetectionService;
         private readonly AiClassificationService _aiClassificationService;
         private readonly EventDecisionService _eventDecisionService;
-        private readonly FacebookCommentActionService _facebookActionService;
-        private readonly EventStateStore _eventStateStore;
         private readonly KafkaProducerService _kafkaProducer;
+        private readonly EventStateStore _eventStateStore;
         private readonly ILogger<CoreEventProcessorService> _logger;
 
         public CoreEventProcessorService(
             SpamDetectionService spamDetectionService,
             AiClassificationService aiClassificationService,
             EventDecisionService eventDecisionService,
-            FacebookCommentActionService facebookActionService,
-            EventStateStore eventStateStore,
             KafkaProducerService kafkaProducer,
+            EventStateStore eventStateStore,
             ILogger<CoreEventProcessorService> logger)
         {
             _spamDetectionService = spamDetectionService;
             _aiClassificationService = aiClassificationService;
             _eventDecisionService = eventDecisionService;
-            _facebookActionService = facebookActionService;
-            _eventStateStore = eventStateStore;
             _kafkaProducer = kafkaProducer;
+            _eventStateStore = eventStateStore;
             _logger = logger;
         }
 
         public async Task ProcessAsync(NormalizedEvent evt, CancellationToken cancellationToken)
         {
-            var result = new EventProcessResult
-            {
-                EventId = evt.EventId,
-                Status = "received"
-            };
-
-            _eventStateStore.Save(result);
-
             try
             {
                 var spam = _spamDetectionService.Detect(evt);
                 var ai = await _aiClassificationService.ClassifyAsync(evt);
-                result = _eventDecisionService.Decide(evt, spam, ai);
 
-                if (result.ShouldHideComment && !string.IsNullOrWhiteSpace(evt.CommentId))
+                var decision = _eventDecisionService.Decide(evt, spam, ai);
+                _eventStateStore.Save(decision);
+
+                var command = new ReplyCommand
                 {
-                    await _facebookActionService.HideCommentAsync(evt.CommentId, cancellationToken);
+                    EventId = evt.EventId,
+                    PageId = evt.PageId,
+                    PostId = evt.PostId,
+                    CommentId = evt.CommentId,
+                    UserId = evt.ActorId,
+                    Intent = decision.Intent,
+                    Sentiment = decision.Sentiment,
+                    ReplyText = decision.ReplyMessage,
+                    Status = "processed"
+                };
+
+                if (decision.ShouldHideComment)
+                {
+                    command.Action = "hide_comment";
+                    command.ReplyText = null;
+                }
+                else if (decision.ShouldReviewManually)
+                {
+                    command.Action = "pending_review";
+                    command.ReplyText = null;
+                }
+                else if (decision.ShouldReply)
+                {
+                    command.Action = "reply";
+                }
+                else
+                {
+                    command.Action = "none";
+                    command.ReplyText = null;
                 }
 
-                if (result.ShouldReply &&
-                    !string.IsNullOrWhiteSpace(evt.CommentId) &&
-                    !string.IsNullOrWhiteSpace(result.ReplyMessage))
-                {
-                    await _facebookActionService.ReplyCommentAsync(
-                        evt.CommentId,
-                        result.ReplyMessage,
-                        cancellationToken);
-                }
+                await _kafkaProducer.PublishReplyCommandAsync(command, cancellationToken);
 
-                if (result.ShouldBlockUser &&
-                    !string.IsNullOrWhiteSpace(evt.PageId) &&
-                    !string.IsNullOrWhiteSpace(evt.ActorId))
-                {
-                    await _facebookActionService.BlockUserAsync(
-                        evt.PageId,
-                        evt.ActorId,
-                        cancellationToken);
-                }
-
-                _eventStateStore.Save(result);
+                _logger.LogInformation(
+                    "Processed event {EventId}, action={Action}, intent={Intent}, sentiment={Sentiment}",
+                    evt.EventId,
+                    command.Action,
+                    command.Intent,
+                    command.Sentiment);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Process event failed: {EventId}", evt.EventId);
+                _logger.LogError(ex, "Core service failed to process event {EventId}", evt.EventId);
 
-                result.Status = "failed";
-                result.ErrorMessage = ex.Message;
-                _eventStateStore.Save(result);
+                var failed = new EventProcessResult
+                {
+                    EventId = evt.EventId,
+                    Status = "failed",
+                    ErrorMessage = ex.Message
+                };
 
-                evt.Status = "failed";
-                evt.LastError = ex.Message;
-                evt.RetryCount++;
-
-                await _kafkaProducer.PublishSendFailedAsync(evt, cancellationToken);
+                _eventStateStore.Save(failed);
             }
         }
     }

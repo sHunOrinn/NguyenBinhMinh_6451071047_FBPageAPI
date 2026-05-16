@@ -28,23 +28,54 @@ namespace NguyenBinhMinh_FBPageAPI.Services
             _producer = new ProducerBuilder<Null, string>(config).Build();
         }
 
-        public Task PublishRawEventAsync(NormalizedEvent evt, CancellationToken cancellationToken = default)
+        public Task PublishRawEventAsync(
+            NormalizedEvent evt,
+            CancellationToken cancellationToken = default)
         {
             return PublishAsync(_options.TopicRawEvents, evt, cancellationToken);
         }
 
-        public Task PublishSendFailedAsync(NormalizedEvent evt, CancellationToken cancellationToken = default)
+        public Task PublishReplyCommandAsync(
+            ReplyCommand command,
+            CancellationToken cancellationToken = default)
         {
-            return PublishAsync(_options.TopicSendFailed, evt, cancellationToken);
+            return PublishAsync(_options.TopicReplyCommands, command, cancellationToken);
         }
 
-        private async Task PublishAsync(string topic, NormalizedEvent evt, CancellationToken cancellationToken)
+        public Task PublishSendFailedAsync(
+            ReplyCommand command,
+            CancellationToken cancellationToken = default)
         {
-            var payload = JsonSerializer.Serialize(evt);
+            return PublishAsync(_options.TopicSendFailed, command, cancellationToken);
+        }
+
+        public Task PublishSendRetryAsync(
+            ReplyCommand command,
+            CancellationToken cancellationToken = default)
+        {
+            return PublishAsync(_options.TopicSendRetry, command, cancellationToken);
+        }
+
+        public Task PublishDeadLetterAsync(
+            ReplyCommand command,
+            CancellationToken cancellationToken = default)
+        {
+            return PublishAsync(_options.TopicDeadLetter, command, cancellationToken);
+        }
+
+        private async Task PublishAsync<T>(
+            string topic,
+            T data,
+            CancellationToken cancellationToken)
+        {
+            var payload = JsonSerializer.Serialize(data);
 
             var result = await _producer.ProduceAsync(
                 topic,
-                new Message<Null, string> { Value = payload },
+                new Message<Null, string>
+                {
+                    Value = payload
+                },
                 cancellationToken);
 
             _logger.LogInformation(

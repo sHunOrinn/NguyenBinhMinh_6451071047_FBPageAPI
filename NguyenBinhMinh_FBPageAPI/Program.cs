@@ -14,36 +14,36 @@ builder.Services.Configure<FacebookWebhookOptions>(options =>
         builder.Configuration["FacebookWebhook:VerifyToken"] ?? "my_verify_token";
 
     options.AppSecret =
-        Environment.GetEnvironmentVariable("FB_APP_SECRET") ?? "";
+        Environment.GetEnvironmentVariable("FB_APP_SECRET")
+        ?? builder.Configuration["FacebookWebhook:AppSecret"]
+        ?? "";
 });
 
+// Facebook config
 builder.Services.Configure<FacebookOptions>(
     builder.Configuration.GetSection("Facebook"));
 
-// Services
-builder.Services.AddSingleton<KafkaProducerService>();
-builder.Services.AddSingleton<FacebookSignatureService>();
-builder.Services.AddSingleton<FacebookEventNormalizer>();
-
-builder.Services.Configure<FacebookOptions>(
-    builder.Configuration.GetSection("Facebook"));
-
+// HttpClient
 builder.Services.AddHttpClient();
 
-
+// Core services
+builder.Services.AddSingleton<KafkaProducerService>();
 builder.Services.AddSingleton<FacebookSignatureService>();
 builder.Services.AddSingleton<FacebookEventNormalizer>();
-builder.Services.AddSingleton<KafkaProducerService>();
 
 builder.Services.AddSingleton<EventStateStore>();
 builder.Services.AddSingleton<SpamDetectionService>();
 builder.Services.AddSingleton<AiClassificationService>();
 builder.Services.AddSingleton<EventDecisionService>();
 
-builder.Services.AddScoped<FacebookCommentActionService>();
 builder.Services.AddScoped<CoreEventProcessorService>();
 
+// Bài 2 chỉ consume raw_events và publish reply_commands
 builder.Services.AddHostedService<RawEventsConsumerHostedService>();
+
+// Tạm thời KHÔNG bật phần gọi Facebook API / Retry Service ở Bài 2
+builder.Services.AddScoped<FacebookCommentActionService>();
+builder.Services.AddHostedService<ReplyCommandsConsumerHostedService>();
 builder.Services.AddHostedService<RetryFailedConsumerHostedService>();
 
 builder.Services.AddControllers();
@@ -58,7 +58,9 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
+// Nếu dùng ngrok hoặc test local webhook, có thể tạm comment dòng này
+// app.UseHttpsRedirection();
+
 app.MapControllers();
 
 app.Run();
