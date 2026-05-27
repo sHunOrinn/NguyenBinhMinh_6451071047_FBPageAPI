@@ -11,6 +11,8 @@ builder.Services.AddSingleton<KafkaProducerService>();
 
 builder.Services.AddHostedService<RetryFailedConsumerHostedService>();
 
+builder.Services.AddSingleton<RetryMetricsService>();
+
 builder.Services.AddControllers();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
