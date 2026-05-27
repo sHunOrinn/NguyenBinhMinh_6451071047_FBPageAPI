@@ -87,7 +87,7 @@ services:
       Kafka__TopicSendFailed: send_failed
       Kafka__ConsumerGroupId: backend-api
       Facebook__GraphVersion: v25.0
-      Facebook__PageAccessToken: EAAW9gPQjY2IBRrMEUa5FOcQ83Vcv4lSio49Unffizw4omlwyo6FNKAMMlPtpx6cT6CUZCCwtuTfJTfbTipdHXNPeMkfVTnGrvll1A7ZAPS2Tnj28jFOg5rX3KUOUjnPb2n4ac2xm7gjgKS3tVEDeKp5mdV7KkJT4vczCBnLPEfj9lxJZAMdSuSH1cRkBZAMR1xqu5woTZAW1YyAAIXcTSfOj07vDD5TxLZBOdyh1aXSBSINZCRahdvZBEysZD
+      Facebook__PageAccessToken: EAW9gPQjY2IBRj8FHlv1JWLj7BGK5JwBg7WYR7cXLmUo2XWCfQYPJpWgZB8PrzcTJ7wvIdoJ21iwGRZATtZAZCQa003Ob7OKtr0AWzQSjAxvbFdEJuN6iqhB1sc4vCeeoX0p84D9gCOi4ORFjR6W0yoO1FZAscBz9MSCGK2ZBK13WGzkpsGo7cttupYeywn8H6Ps3sGE1E3LUtccPEKitz4cOn2Mv5HrtWZBACjd0fIvbLPZCgbhKZBT92agZD
       # ConnectionStrings__SqlServer: "Server=sqlserver,1433;Database=fb_api_db;User Id=sa;Password=123456789;TrustServerCertificate=True;"
       # postgresql://postgres.ofbqupbetltmmqrqqjie:[YOUR-PASSWORD]@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres
       # ConnectionStrings__Supabase: postgresql://postgres.ofbqupbetltmmqrqqjie:[YOUR-PASSWORD]@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres

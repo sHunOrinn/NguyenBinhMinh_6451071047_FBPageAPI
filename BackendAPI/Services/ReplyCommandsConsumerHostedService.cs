@@ -10,18 +10,17 @@ namespace BackendAPI.Services
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly KafkaOptions _options;
         private readonly KafkaProducerService _kafkaProducer;
-        //private readonly InMemoryIdempotencyService _idempotencyService;
         private readonly SupabaseIdempotencyService _idempotencyService;
         private readonly CommandLogService _commandLogService;
         private readonly ILogger<ReplyCommandsConsumerHostedService> _logger;
 
         public ReplyCommandsConsumerHostedService(
-        IServiceScopeFactory scopeFactory,
-        IOptions<KafkaOptions> options,
-        KafkaProducerService kafkaProducer,
-        SupabaseIdempotencyService idempotencyService,
-        CommandLogService commandLogService,
-        ILogger<ReplyCommandsConsumerHostedService> logger)
+            IServiceScopeFactory scopeFactory,
+            IOptions<KafkaOptions> options,
+            KafkaProducerService kafkaProducer,
+            SupabaseIdempotencyService idempotencyService,
+            CommandLogService commandLogService,
+            ILogger<ReplyCommandsConsumerHostedService> logger)
         {
             _scopeFactory = scopeFactory;
             _options = options.Value;
@@ -59,6 +58,7 @@ namespace BackendAPI.Services
             {
                 ConsumeResult<Ignore, string>? message = null;
                 ReplyCommand? command = null;
+                bool facebookActionSucceeded = false;
 
                 try
                 {
@@ -93,7 +93,9 @@ namespace BackendAPI.Services
                         continue;
                     }
 
-                    var canProcess = await _idempotencyService.TryStartAsync(command, stoppingToken);
+                    var canProcess = await _idempotencyService.TryStartAsync(
+                        command,
+                        stoppingToken);
 
                     if (!canProcess)
                     {
@@ -102,6 +104,12 @@ namespace BackendAPI.Services
                             command.EventId,
                             command.CommentId,
                             command.Action);
+
+                        await _commandLogService.SaveAsync(
+                            command,
+                            "duplicate_ignored",
+                            null,
+                            stoppingToken);
 
                         consumer.Commit(message);
                         continue;
@@ -112,7 +120,9 @@ namespace BackendAPI.Services
                     var facebookService = scope.ServiceProvider
                         .GetRequiredService<FacebookCommentActionService>();
 
-                    if (command.Action == "reply")
+                    var action = command.Action?.Trim().ToLowerInvariant();
+
+                    if (action == "reply")
                     {
                         if (string.IsNullOrWhiteSpace(command.ReplyText))
                         {
@@ -123,12 +133,20 @@ namespace BackendAPI.Services
                             command.CommentId,
                             command.ReplyText,
                             stoppingToken);
+                        facebookActionSucceeded = true;
                     }
-                    else if (command.Action == "hide_comment" || command.Action == "hide")
+                    //else if (action == "delete_comment" || action == "delete")
+                    //{
+                    //    await facebookService.DeleteCommentAsync(
+                    //        command.CommentId,
+                    //        stoppingToken);
+                    //}
+                    else if (action == "hide_comment" || action == "hide")
                     {
                         await facebookService.HideCommentAsync(
                             command.CommentId,
                             stoppingToken);
+                        //facebookActionSucceeded = true;
                     }
                     else
                     {
@@ -137,13 +155,16 @@ namespace BackendAPI.Services
                             command.CommandId,
                             command.Action);
 
-                        await _idempotencyService.RemoveAsync(command, stoppingToken);
+                        await _idempotencyService.RemoveAsync(
+                            command,
+                            stoppingToken);
 
                         await _commandLogService.SaveAsync(
                             command,
                             "skipped",
                             null,
                             stoppingToken);
+
                         consumer.Commit(message);
                         continue;
                     }
@@ -151,7 +172,9 @@ namespace BackendAPI.Services
                     command.Status = "processed";
                     command.LastError = null;
 
-                    await _idempotencyService.MarkProcessedAsync(command, stoppingToken);
+                    await _idempotencyService.MarkProcessedAsync(
+                        command,
+                        stoppingToken);
 
                     await _commandLogService.SaveAsync(
                         command,
@@ -183,16 +206,33 @@ namespace BackendAPI.Services
 
                     if (command != null)
                     {
-                        command.Status = "failed";
                         command.LastError = ex.Message;
 
-                        //if (command.RetryCount <= 0)
-                        //{
-                        //    command.RetryCount = 1;
-                        //}
+                        if (facebookActionSucceeded)
+                        {
+                            // Facebook đã xử lý thành công rồi.
+                            // Không được publish send_failed nữa, nếu không sẽ retry và reply trùng.
+                            command.Status = "processed_but_log_failed";
 
-                        // Nếu gọi Facebook lỗi thì mở khóa để retry-service có thể gửi lại
-                        await _idempotencyService.RemoveAsync(command, stoppingToken);
+                            await _commandLogService.SaveAsync(
+                                command,
+                                "processed_but_log_failed",
+                                ex.Message,
+                                stoppingToken);
+
+                            if (message != null)
+                            {
+                                consumer.Commit(message);
+                            }
+
+                            continue;
+                        }
+
+                        command.Status = "failed";
+
+                        await _idempotencyService.RemoveAsync(
+                            command,
+                            stoppingToken);
 
                         await _commandLogService.SaveAsync(
                             command,

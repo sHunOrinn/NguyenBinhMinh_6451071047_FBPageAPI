@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/Solution Items/">
+    <File Path="README.md" />
+  </Folder>
   <Project Path="BackendAPI/BackendAPI.csproj" Id="f8ea2b78-7aa0-40cf-9c93-4286fed8cbfc" />
   <Project Path="CoreServices/CoreServices.csproj" Id="129bb648-ee19-4fa4-a045-ddce7793799b" />
   <Project Path="NguyenBinhMinh_FBPageAPI/NguyenBinhMinh_FBPageAPI.csproj" />

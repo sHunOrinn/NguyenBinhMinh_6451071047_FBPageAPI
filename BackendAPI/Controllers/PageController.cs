@@ -32,9 +32,11 @@ namespace BackendAPI.Controllers
             {
                 var client = _httpClientFactory.CreateClient();
 
+                // Bỏ field category vì Facebook API báo field này không hợp lệ.
+                // Dùng các field an toàn hơn để lấy thông tin Page.
                 var url =
                     $"{BaseUrl}/{pageId}" +
-                    "?fields=id,name,about,category,fan_count,followers_count" +
+                    "?fields=id,name,fan_count,followers_count,link" +
                     $"&access_token={Uri.EscapeDataString(_facebookOptions.PageAccessToken)}";
 
                 var response = await client.GetAsync(url, cancellationToken);
