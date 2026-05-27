@@ -229,6 +229,6 @@ Các bảng chính:
 
 ## 9. Tác giả
 
-Nguyễn Bình Minh
+Nguyễn Bình Minh - (sHunOrinn)
 
 Thực hành hệ thống quản lý Facebook Page phân tán bằng ASP.NET Core, Kafka, Docker, Gemini API, Facebook Graph API và Supabase.
