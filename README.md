@@ -35,7 +35,7 @@ Hệ thống gồm 4 service chính:
 
 | Service | Port | Vai trò |
 |---|---:|---|
-| Webhook Service | 3001 | Nhận webhook từ Facebook Page và publish event vào Kafka |
+| Webhook Service(NguyenBinhMinh_FBPageAPI) | 3001 | Nhận webhook từ Facebook Page và publish event vào Kafka |
 | Core Service | 3002 | Phân tích bình luận, xử lý AI và tạo command |
 | Backend API | 3000 | Gọi Facebook Graph API để reply hoặc xóa comment |
 | Retry Service | 3003 | Xử lý retry và dead letter cho các command thất bại |
@@ -229,6 +229,6 @@ Các bảng chính:
 
 ## 9. Tác giả
 
-Nguyễn Bình Minh - (sHunOrinn)
+Nguyễn Bình Minh aka sHunOrinn
 
 Thực hành hệ thống quản lý Facebook Page phân tán bằng ASP.NET Core, Kafka, Docker, Gemini API, Facebook Graph API và Supabase.
