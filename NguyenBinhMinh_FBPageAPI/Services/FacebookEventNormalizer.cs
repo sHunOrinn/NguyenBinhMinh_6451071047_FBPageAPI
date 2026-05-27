@@ -1,10 +1,18 @@
 ﻿using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using NguyenBinhMinh_FBPageAPI.Models;
 
 namespace NguyenBinhMinh_FBPageAPI.Services
 {
     public class FacebookEventNormalizer
     {
+        private readonly ILogger<FacebookEventNormalizer> _logger;
+
+        public FacebookEventNormalizer(ILogger<FacebookEventNormalizer> logger)
+        {
+            _logger = logger;
+        }
+
         public List<NormalizedEvent> Normalize(string rawJson)
         {
             var results = new List<NormalizedEvent>();
@@ -12,7 +20,7 @@ namespace NguyenBinhMinh_FBPageAPI.Services
             using var doc = JsonDocument.Parse(rawJson);
             var root = doc.RootElement;
 
-            // 1) Payload test mẫu từ Meta: { "sample": {...} }
+            // 1. Payload test mẫu từ Meta: { "sample": {...} }
             if (root.TryGetProperty("sample", out var sample))
             {
                 var field = GetString(sample, "field");
@@ -36,21 +44,25 @@ namespace NguyenBinhMinh_FBPageAPI.Services
                 return results;
             }
 
-            // 2) Payload thật từ Facebook: { "object": "...", "entry": [...] }
-            if (!root.TryGetProperty("entry", out var entries) || entries.ValueKind != JsonValueKind.Array)
+            // 2. Payload thật từ Facebook: { "object": "page", "entry": [...] }
+            if (!root.TryGetProperty("entry", out var entries) ||
+                entries.ValueKind != JsonValueKind.Array)
             {
                 return results;
             }
 
             foreach (var entry in entries.EnumerateArray())
             {
-                var entryId = GetString(entry, "id");
-                var entryTime = entry.TryGetProperty("time", out var timeEl) && TryGetInt64(timeEl, out var unixTime)
+                var pageId = GetString(entry, "id");
+
+                var entryTime = entry.TryGetProperty("time", out var timeEl) &&
+                                TryGetInt64(timeEl, out var unixTime)
                     ? ParseUnixTime(unixTime)
                     : DateTime.UtcNow;
 
-                // 2a) Nhánh changes[]
-                if (entry.TryGetProperty("changes", out var changes) && changes.ValueKind == JsonValueKind.Array)
+                // Nhánh changes[]: payload Page feed/comment thật
+                if (entry.TryGetProperty("changes", out var changes) &&
+                    changes.ValueKind == JsonValueKind.Array)
                 {
                     foreach (var change in changes.EnumerateArray())
                     {
@@ -62,7 +74,7 @@ namespace NguyenBinhMinh_FBPageAPI.Services
                             var normalized = BuildNormalizedEventFromElement(
                                 field,
                                 value,
-                                pageIdFallback: entryId,
+                                pageIdFallback: pageId,
                                 defaultCreatedAt: entryTime,
                                 rawJson: change.GetRawText());
 
@@ -74,8 +86,9 @@ namespace NguyenBinhMinh_FBPageAPI.Services
                     }
                 }
 
-                // 2b) Nhánh messaging[] — payload thực tế bạn đang nhận
-                if (entry.TryGetProperty("messaging", out var messaging) && messaging.ValueKind == JsonValueKind.Array)
+                // Nhánh messaging[] nếu có payload dạng khác
+                if (entry.TryGetProperty("messaging", out var messaging) &&
+                    messaging.ValueKind == JsonValueKind.Array)
                 {
                     foreach (var msg in messaging.EnumerateArray())
                     {
@@ -86,7 +99,7 @@ namespace NguyenBinhMinh_FBPageAPI.Services
                             var normalized = BuildNormalizedEventFromElement(
                                 field,
                                 msg,
-                                pageIdFallback: entryId,
+                                pageIdFallback: pageId,
                                 defaultCreatedAt: entryTime,
                                 rawJson: msg.GetRawText());
 
@@ -102,7 +115,7 @@ namespace NguyenBinhMinh_FBPageAPI.Services
             return results;
         }
 
-        private static NormalizedEvent? BuildNormalizedEventFromElement(
+        private NormalizedEvent? BuildNormalizedEventFromElement(
             string field,
             JsonElement element,
             string? pageIdFallback,
@@ -116,23 +129,20 @@ namespace NguyenBinhMinh_FBPageAPI.Services
             var item = GetString(element, "item");
             var verb = GetString(element, "verb");
 
-            if (string.IsNullOrWhiteSpace(item) && !string.IsNullOrWhiteSpace(commentId))
+            if (string.IsNullOrWhiteSpace(item) &&
+                !string.IsNullOrWhiteSpace(commentId))
             {
                 item = "comment";
             }
 
             if (string.IsNullOrWhiteSpace(verb) &&
-                (!string.IsNullOrWhiteSpace(message) || !string.IsNullOrWhiteSpace(commentId)))
+                (!string.IsNullOrWhiteSpace(message) ||
+                 !string.IsNullOrWhiteSpace(commentId)))
             {
                 verb = "add";
             }
 
-            if (string.IsNullOrWhiteSpace(item) || string.IsNullOrWhiteSpace(verb))
-            {
-                return null;
-            }
-
-            if (verb != "add")
+            if (item != "comment" || verb != "add")
             {
                 return null;
             }
@@ -141,26 +151,52 @@ namespace NguyenBinhMinh_FBPageAPI.Services
             var actorId = GetString(fromEl, "id");
             var actorName = GetString(fromEl, "name");
 
+            var pageId = !string.IsNullOrWhiteSpace(pageIdFallback)
+                ? pageIdFallback
+                : string.Empty;
+
+            // QUAN TRỌNG:
+            // Nếu comment do chính Page tạo ra thì bỏ qua.
+            // Nếu không bỏ qua, Page sẽ tự reply vào reply của chính nó.
+            if (!string.IsNullOrWhiteSpace(pageId) &&
+                !string.IsNullOrWhiteSpace(actorId) &&
+                actorId == pageId)
+            {
+                _logger.LogWarning(
+                    "Skip page self comment. PageId: {PageId}, CommentId: {CommentId}, ActorName: {ActorName}",
+                    pageId,
+                    commentId,
+                    actorName);
+
+                return null;
+            }
+
+            if (string.IsNullOrWhiteSpace(commentId))
+            {
+                _logger.LogInformation("Skip event because comment_id is empty");
+                return null;
+            }
+
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                _logger.LogInformation(
+                    "Skip empty comment. CommentId: {CommentId}",
+                    commentId);
+
+                return null;
+            }
+
             DateTime createdAt = defaultCreatedAt;
+
             if (element.TryGetProperty("created_time", out var createdTimeEl) &&
                 TryGetInt64(createdTimeEl, out var createdUnix))
             {
                 createdAt = ParseUnixTime(createdUnix);
             }
 
-            var eventId =
-                commentId ??
-                postId ??
-                Guid.NewGuid().ToString("N");
-
-            var pageId =
-                pageIdFallback ??
-                actorId ??
-                string.Empty;
-
             return new NormalizedEvent
             {
-                EventId = eventId,
+                EventId = commentId,
                 Source = "facebook",
                 EventType = $"{field}.{item}.{verb}",
                 PageId = pageId,
@@ -176,7 +212,6 @@ namespace NguyenBinhMinh_FBPageAPI.Services
 
         private static DateTime ParseUnixTime(long unixTime)
         {
-            // Nếu lớn hơn 10 chữ số thì là milliseconds
             if (unixTime > 9999999999)
             {
                 return DateTimeOffset.FromUnixTimeMilliseconds(unixTime).UtcDateTime;
@@ -187,34 +222,39 @@ namespace NguyenBinhMinh_FBPageAPI.Services
 
         private static string? GetString(JsonElement element, string propertyName)
         {
-            if (element.ValueKind == JsonValueKind.Undefined || element.ValueKind == JsonValueKind.Null)
+            if (element.ValueKind == JsonValueKind.Undefined ||
+                element.ValueKind == JsonValueKind.Null)
             {
                 return null;
             }
 
-            if (element.TryGetProperty(propertyName, out var prop))
+            if (!element.TryGetProperty(propertyName, out var prop))
             {
-                return prop.ValueKind switch
-                {
-                    JsonValueKind.String => prop.GetString(),
-                    JsonValueKind.Number => prop.ToString(),
-                    JsonValueKind.True => "true",
-                    JsonValueKind.False => "false",
-                    _ => null
-                };
+                return null;
             }
 
-            return null;
+            return prop.ValueKind switch
+            {
+                JsonValueKind.String => prop.GetString(),
+                JsonValueKind.Number => prop.ToString(),
+                JsonValueKind.True => "true",
+                JsonValueKind.False => "false",
+                _ => null
+            };
         }
 
-        private static JsonElement GetPropertyOrDefault(JsonElement element, string propertyName)
+        private static JsonElement GetPropertyOrDefault(
+            JsonElement element,
+            string propertyName)
         {
             if (element.ValueKind != JsonValueKind.Object)
             {
                 return default;
             }
 
-            return element.TryGetProperty(propertyName, out var prop) ? prop : default;
+            return element.TryGetProperty(propertyName, out var prop)
+                ? prop
+                : default;
         }
 
         private static bool TryGetInt64(JsonElement element, out long value)

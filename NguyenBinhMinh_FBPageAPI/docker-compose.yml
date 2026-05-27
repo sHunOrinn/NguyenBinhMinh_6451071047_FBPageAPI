@@ -24,6 +24,7 @@ services:
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
 
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
@@ -35,3 +36,87 @@ services:
     environment:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+
+  webhook-service:
+    build:
+      context: ..
+      dockerfile: NguyenBinhMinh_FBPageAPI/Dockerfile
+    container_name: webhook-service
+    depends_on:
+      - kafka
+    ports:
+      - "3001:3001"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      Kafka__BootstrapServers: kafka:29092
+      Kafka__TopicRawEvents: raw_events
+      FacebookWebhook__VerifyToken: my_verify_token
+      FacebookWebhook__AppSecret: "416fc21a8eae033420291c372add7a65"
+
+  core-service:
+    build:
+      context: ..
+      dockerfile: CoreServices/Dockerfile
+    container_name: core-service
+    depends_on:
+      - kafka
+    ports:
+      - "3002:3002"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      Kafka__BootstrapServers: kafka:29092
+      Kafka__TopicRawEvents: raw_events
+      Kafka__TopicReplyCommands: reply_commands
+      Kafka__CoreConsumerGroupId: core-service
+
+  backend-service:
+    build:
+      context: ..
+      dockerfile: BackendAPI/Dockerfile
+    container_name: backend-service
+    depends_on:
+      - kafka
+      # - sqlserver
+    ports:
+      - "3000:3000"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      Kafka__BootstrapServers: kafka:29092
+      Kafka__TopicReplyCommands: reply_commands
+      Kafka__TopicSendRetry: send_retry
+      Kafka__TopicSendFailed: send_failed
+      Kafka__ConsumerGroupId: backend-api
+      Facebook__GraphVersion: v25.0
+      Facebook__PageAccessToken: EAAW9gPQjY2IBRrMEUa5FOcQ83Vcv4lSio49Unffizw4omlwyo6FNKAMMlPtpx6cT6CUZCCwtuTfJTfbTipdHXNPeMkfVTnGrvll1A7ZAPS2Tnj28jFOg5rX3KUOUjnPb2n4ac2xm7gjgKS3tVEDeKp5mdV7KkJT4vczCBnLPEfj9lxJZAMdSuSH1cRkBZAMR1xqu5woTZAW1YyAAIXcTSfOj07vDD5TxLZBOdyh1aXSBSINZCRahdvZBEysZD
+      # ConnectionStrings__SqlServer: "Server=sqlserver,1433;Database=fb_api_db;User Id=sa;Password=123456789;TrustServerCertificate=True;"
+      # postgresql://postgres.ofbqupbetltmmqrqqjie:[YOUR-PASSWORD]@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres
+      # ConnectionStrings__Supabase: postgresql://postgres.ofbqupbetltmmqrqqjie:[YOUR-PASSWORD]@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres
+      ConnectionStrings__Supabase: "Host=aws-1-ap-southeast-2.pooler.supabase.com;Port=6543;Database=postgres;Username=postgres.ofbqupbetltmmqrqqjie;Password=sHunOrinn1@;SSL Mode=Require;Trust Server Certificate=true"
+
+
+  retry-service:
+    build:
+      context: ..
+      dockerfile: RetryService/Dockerfile
+    container_name: retry-service
+    depends_on:
+      - kafka
+    ports:
+      - "3003:3003"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      Kafka__BootstrapServers: kafka:29092
+      Kafka__TopicSendFailed: send_failed
+      Kafka__TopicSendRetry: send_retry
+      Kafka__TopicDeadLetter: dead_letter
+      Kafka__ConsumerGroupId: retry-service
+  # sqlserver:
+  #   image: mcr.microsoft.com/mssql/server:2022-latest
+  #   container_name: sqlserver
+  #   environment:
+  #     ACCEPT_EULA: "Y"
+  #     SA_PASSWORD: "123456789"
+  #   ports:
+  #     - "1433:1433"
+  #   volumes:
+  #     - sqlserver_data:/var/opt/mssql

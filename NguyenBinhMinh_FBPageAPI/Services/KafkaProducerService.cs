@@ -35,34 +35,6 @@ namespace NguyenBinhMinh_FBPageAPI.Services
             return PublishAsync(_options.TopicRawEvents, evt, cancellationToken);
         }
 
-        public Task PublishReplyCommandAsync(
-            ReplyCommand command,
-            CancellationToken cancellationToken = default)
-        {
-            return PublishAsync(_options.TopicReplyCommands, command, cancellationToken);
-        }
-
-        public Task PublishSendFailedAsync(
-            ReplyCommand command,
-            CancellationToken cancellationToken = default)
-        {
-            return PublishAsync(_options.TopicSendFailed, command, cancellationToken);
-        }
-
-        public Task PublishSendRetryAsync(
-            ReplyCommand command,
-            CancellationToken cancellationToken = default)
-        {
-            return PublishAsync(_options.TopicSendRetry, command, cancellationToken);
-        }
-
-        public Task PublishDeadLetterAsync(
-            ReplyCommand command,
-            CancellationToken cancellationToken = default)
-        {
-            return PublishAsync(_options.TopicDeadLetter, command, cancellationToken);
-        }
-
         private async Task PublishAsync<T>(
             string topic,
             T data,
