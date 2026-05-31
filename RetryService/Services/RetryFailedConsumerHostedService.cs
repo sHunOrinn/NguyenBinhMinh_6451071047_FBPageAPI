@@ -9,6 +9,7 @@ namespace RetryServices.Services
     {
         private readonly KafkaOptions _options;
         private readonly KafkaProducerService _kafkaProducer;
+        private readonly AlertService _alertService;
         private readonly ILogger<RetryFailedConsumerHostedService> _logger;
 
         private const int MaxRetry = 3;
@@ -16,10 +17,12 @@ namespace RetryServices.Services
         public RetryFailedConsumerHostedService(
             IOptions<KafkaOptions> options,
             KafkaProducerService kafkaProducer,
+            AlertService alertService,
             ILogger<RetryFailedConsumerHostedService> logger)
         {
             _options = options.Value;
             _kafkaProducer = kafkaProducer;
+            _alertService = alertService;
             _logger = logger;
         }
 
@@ -49,7 +52,9 @@ namespace RetryServices.Services
                     var message = consumer.Consume(stoppingToken);
 
                     if (message?.Message?.Value == null)
+                    {
                         continue;
+                    }
 
                     var command = JsonSerializer.Deserialize<ReplyCommand>(
                         message.Message.Value,
@@ -73,8 +78,13 @@ namespace RetryServices.Services
                             command,
                             stoppingToken);
 
+                        // Gửi cảnh báo chỉ khi đã vào dead_letter
+                        await _alertService.SendDeadLetterAlertAsync(
+                            command,
+                            stoppingToken);
+
                         _logger.LogError(
-                            "Command moved to dead_letter. CommandId: {CommandId}, RetryCount: {RetryCount}",
+                            "Command moved to dead_letter and alert sent. CommandId: {CommandId}, RetryCount: {RetryCount}",
                             command.CommandId,
                             command.RetryCount);
 
@@ -93,11 +103,18 @@ namespace RetryServices.Services
                         command.RetryCount,
                         delaySeconds);
 
-                    await Task.Delay(TimeSpan.FromSeconds(delaySeconds), stoppingToken);
+                    await Task.Delay(
+                        TimeSpan.FromSeconds(delaySeconds),
+                        stoppingToken);
 
                     await _kafkaProducer.PublishSendRetryAsync(
                         command,
                         stoppingToken);
+
+                    _logger.LogInformation(
+                        "Retry command published to send_retry. CommandId: {CommandId}, RetryCount: {RetryCount}",
+                        command.CommandId,
+                        command.RetryCount);
 
                     consumer.Commit(message);
                 }

@@ -6,6 +6,12 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.Configure<KafkaOptions>(
     builder.Configuration.GetSection("Kafka"));
+builder.Services.Configure<AlertOptions>(
+    builder.Configuration.GetSection("Alert"));
+
+builder.Services.AddHttpClient();
+
+builder.Services.AddSingleton<AlertService>();
 
 builder.Services.AddSingleton<KafkaProducerService>();
 

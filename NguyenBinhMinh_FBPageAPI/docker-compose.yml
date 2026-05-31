@@ -87,7 +87,7 @@ services:
       Kafka__TopicSendFailed: send_failed
       Kafka__ConsumerGroupId: backend-api
       Facebook__GraphVersion: v25.0
-      Facebook__PageAccessToken: EAW9gPQjY2IBRj8FHlv1JWLj7BGK5JwBg7WYR7cXLmUo2XWCfQYPJpWgZB8PrzcTJ7wvIdoJ21iwGRZATtZAZCQa003Ob7OKtr0AWzQSjAxvbFdEJuN6iqhB1sc4vCeeoX0p84D9gCOi4ORFjR6W0yoO1FZAscBz9MSCGK2ZBK13WGzkpsGo7cttupYeywn8H6Ps3sGE1E3LUtccPEKitz4cOn2Mv5HrtWZBACjd0fIvbLPZCgbhKZBT92agZD
+      Facebook__PageAccessToken: EAAW9gPQjY2IBRv7rh174kxGsIT9rZAi8l6C2Cdb9IZBA3kUH8AHRlMxwlIVu1SSA8fc4ICRaTheciCaaL2CoJqZAF3Ad8lJUj3ZBdrowJUAJ9T6MLy8qZAxZCNraSdDQDZCI7sxEF6noMrcPgazdwG0sz48h03wIjKjx41hWlTlck4UD1ZBXkoWftggIqHcHMndKT4YCqsFCZCTJZBEJZAItEplypiEKuHrway9wM1jd4Xjgx0MqE6tLHW6d3Ao
       # ConnectionStrings__SqlServer: "Server=sqlserver,1433;Database=fb_api_db;User Id=sa;Password=123456789;TrustServerCertificate=True;"
       # postgresql://postgres.ofbqupbetltmmqrqqjie:[YOUR-PASSWORD]@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres
       # ConnectionStrings__Supabase: postgresql://postgres.ofbqupbetltmmqrqqjie:[YOUR-PASSWORD]@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres
@@ -110,6 +110,15 @@ services:
       Kafka__TopicSendRetry: send_retry
       Kafka__TopicDeadLetter: dead_letter
       Kafka__ConsumerGroupId: retry-service
+      Alert__EnableEmail: "true"
+      Alert__EnableSlack: "false"
+      Alert__SmtpHost: smtp.gmail.com
+      Alert__SmtpPort: 587
+      Alert__SmtpUser: binhminh21032005@gmail.com
+      Alert__SmtpPassword: cuao qzib zxjf ohje
+      Alert__FromEmail: binhminh21032005@gmail.com
+      Alert__ToEmail: minhnguyen14536@gmail.com
+      Alert__SlackWebhookUrl: ""
   # sqlserver:
   #   image: mcr.microsoft.com/mssql/server:2022-latest
   #   container_name: sqlserver
