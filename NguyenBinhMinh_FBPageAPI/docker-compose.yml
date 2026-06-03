@@ -36,6 +36,26 @@ services:
     environment:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+  
+  kafka-init:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: kafka-init
+    depends_on:
+      - kafka
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "
+      echo 'Waiting for Kafka...';
+      sleep 15;
+
+      kafka-topics --create --if-not-exists --topic raw_events --bootstrap-server kafka:29092 --partitions 1 --replication-factor 1;
+      kafka-topics --create --if-not-exists --topic reply_commands --bootstrap-server kafka:29092 --partitions 1 --replication-factor 1;
+      kafka-topics --create --if-not-exists --topic send_failed --bootstrap-server kafka:29092 --partitions 1 --replication-factor 1;
+      kafka-topics --create --if-not-exists --topic send_retry --bootstrap-server kafka:29092 --partitions 1 --replication-factor 1;
+      kafka-topics --create --if-not-exists --topic dead_letter --bootstrap-server kafka:29092 --partitions 1 --replication-factor 1;
+
+      echo 'Kafka topics created successfully.';
+      "
 
   webhook-service:
     build:
@@ -44,6 +64,7 @@ services:
     container_name: webhook-service
     depends_on:
       - kafka
+      - kafka-init
     ports:
       - "3001:3001"
     environment:
@@ -60,6 +81,7 @@ services:
     container_name: core-service
     depends_on:
       - kafka
+      - kafka-init 
     ports:
       - "3002:3002"
     environment:
@@ -77,6 +99,7 @@ services:
     depends_on:
       - kafka
       # - sqlserver
+      - kafka-init 
     ports:
       - "3000:3000"
     environment:
@@ -87,7 +110,7 @@ services:
       Kafka__TopicSendFailed: send_failed
       Kafka__ConsumerGroupId: backend-api
       Facebook__GraphVersion: v25.0
-      Facebook__PageAccessToken: EAAW9gPQjY2IBRv7rh174kxGsIT9rZAi8l6C2Cdb9IZBA3kUH8AHRlMxwlIVu1SSA8fc4ICRaTheciCaaL2CoJqZAF3Ad8lJUj3ZBdrowJUAJ9T6MLy8qZAxZCNraSdDQDZCI7sxEF6noMrcPgazdwG0sz48h03wIjKjx41hWlTlck4UD1ZBXkoWftggIqHcHMndKT4YCqsFCZCTJZBEJZAItEplypiEKuHrway9wM1jd4Xjgx0MqE6tLHW6d3Ao
+      Facebook__PageAccessToken: EAAW9gPQjY2IBRoZAH9v5aneEoHMl1BtCuskKZCOmVAP3ON6dLB7o3LhvvDclL90xKStGTplfEZCzA45ayZB2lWVNap0MWMa8os0UnLHOUnykvgGZCnVSNWeyFZBGv9duyT4iG3fMx1oUywwiTDLOQl20o0Kv5eBdgzHWtjX47otHVNFtyxkg5Wo2iOA0DuZB0KfggEco4ppSjUAz7nRm5YyZCgfW9dNKZCvk5yB0v5KnbiJeuHdOvIHX9ekIZD
       # ConnectionStrings__SqlServer: "Server=sqlserver,1433;Database=fb_api_db;User Id=sa;Password=123456789;TrustServerCertificate=True;"
       # postgresql://postgres.ofbqupbetltmmqrqqjie:[YOUR-PASSWORD]@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres
       # ConnectionStrings__Supabase: postgresql://postgres.ofbqupbetltmmqrqqjie:[YOUR-PASSWORD]@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres
@@ -101,6 +124,7 @@ services:
     container_name: retry-service
     depends_on:
       - kafka
+      - kafka-init
     ports:
       - "3003:3003"
     environment:
@@ -129,3 +153,32 @@ services:
   #     - "1433:1433"
   #   volumes:
   #     - sqlserver_data:/var/opt/mssql
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:latest
+    container_name: kafka-exporter
+    depends_on:
+      - kafka
+    ports:
+      - "9308:9308"
+    command:
+      - "--kafka.server=kafka:29092"
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    depends_on:
+      - kafka-exporter
+      - alertmanager
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: alertmanager
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml

@@ -1,0 +1,13 @@
+﻿groups:
+  - name: dead-letter-queue-alerts
+    rules:
+      - alert: DeadLetterTopicHasNewMessage
+        expr: increase(kafka_topic_partition_current_offset{topic="dead_letter"}[1m]) > 0
+        for: 0s
+        labels:
+          severity: critical
+          service: retry-service
+          topic: dead_letter
+        annotations:
+          summary: "Dead Letter Queue có message mới"
+          description: "Topic dead_letter vừa có message mới. Có command đã retry quá số lần cho phép và cần admin kiểm tra thủ công bằng Kafka UI."
