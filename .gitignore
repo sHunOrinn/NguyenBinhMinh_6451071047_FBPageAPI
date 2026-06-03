@@ -365,3 +365,4 @@ CoreServices/appsettings.json
 RetryService/appsettings.json
 NguyenBinhMinh_FBPageAPI/docker-compose.yml
 NguyenBinhMinh_FBPageAPI/alertmanager/alertmanager.yml
+BackendAPI/appsettings.json
