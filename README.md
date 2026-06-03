@@ -1,7 +1,7 @@
 # Facebook Page Automation System
 
-Hệ thống tự động quản lý và xử lý bình luận Facebook Page theo kiến trúc microservices.  
-Dự án sử dụng ASP.NET Core, Apache Kafka, Docker, Facebook Graph API, Gemini API và Supabase để xây dựng luồng xử lý bình luận phân tán.
+Hệ thống tự động quản lý và xử lý bình luận Facebook Page theo kiến trúc microservices.
+Dự án sử dụng ASP.NET Core, Apache Kafka, Docker, Facebook Graph API, Gemini API, Supabase, Prometheus, Alertmanager và Kafka Exporter để xây dựng luồng xử lý bình luận phân tán, có cơ chế retry và cảnh báo `dead_letter`.
 
 ---
 
@@ -11,23 +11,24 @@ Facebook Page Automation System là hệ thống backend phân tán dùng để 
 
 Hệ thống được tách thành nhiều service độc lập nhằm dễ mở rộng, dễ kiểm thử và phù hợp với mô hình xử lý sự kiện trong hệ thống phân tán.
 
+Ngoài ra, hệ thống được bổ sung Prometheus, Alertmanager và Kafka Exporter để giám sát topic `dead_letter`. Khi có message mới được đưa vào `dead_letter`, Prometheus sẽ phát hiện thông qua Kafka Exporter và gửi cảnh báo đến Alertmanager để thông báo cho quản trị viên.
+
 ---
 
 ## 2. Chức năng chính
 
-- Nhận sự kiện bình luận từ Facebook Page thông qua Webhook.
-- Chuẩn hóa dữ liệu webhook thành event nội bộ.
-- Publish event vào Kafka topic `raw_events`.
-- Phân tích bình luận bằng Gemini API.
-- Phân loại intent, sentiment, spam và nội dung không phù hợp.
-- Tự động trả lời bình luận hợp lệ.
-- Tự động xóa bình luận spam hoặc nội dung không phù hợp.
-- Chống gửi phản hồi trùng bằng idempotency key.
-- Retry khi gọi Facebook Graph API thất bại.
-- Đưa message lỗi quá số lần retry vào topic `dead_letter`.
-- Thêm Prometheus, Alertmanager và Kafka Exporter để cảnh báo `dead_letter`.
-- Gửi thông báo qua gmail khi có message vào `dead_letter`.
-- Lưu idempotency key và command log bằng Supabase.
+* Nhận sự kiện bình luận từ Facebook Page thông qua Webhook.
+* Chuẩn hóa dữ liệu webhook thành event nội bộ.
+* Publish event vào Kafka topic `raw_events`.
+* Phân tích bình luận bằng Gemini API.
+* Phân loại intent, sentiment, spam và nội dung không phù hợp.
+* Tự động trả lời bình luận hợp lệ.
+* Tự động xóa bình luận spam hoặc nội dung không phù hợp.
+* Chống gửi phản hồi trùng bằng idempotency key.
+* Retry khi gọi Facebook Graph API thất bại.
+* Đưa message lỗi quá số lần retry vào topic `dead_letter`.
+* Thêm Prometheus, Alertmanager và Kafka Exporter để cảnh báo `dead_letter`.
+* Lưu idempotency key và command log bằng Supabase.
 
 ---
 
@@ -35,22 +36,25 @@ Hệ thống được tách thành nhiều service độc lập nhằm dễ mở
 
 Hệ thống gồm 4 service chính:
 
-| Service | Port | Vai trò |
-|---|---:|---|
+| Service                                   | Port | Vai trò                                                  |
+| ----------------------------------------- | ---: | -------------------------------------------------------- |
 | Webhook Service(NguyenBinhMinh_FBPageAPI) | 3001 | Nhận webhook từ Facebook Page và publish event vào Kafka |
-| Core Service | 3002 | Phân tích bình luận, xử lý AI và tạo command |
-| Backend API | 3000 | Gọi Facebook Graph API để reply hoặc xóa comment |
-| Retry Service | 3003 | Xử lý retry và dead letter cho các command thất bại |
+| Core Service                              | 3002 | Phân tích bình luận, xử lý AI và tạo command             |
+| Backend API                               | 3000 | Gọi Facebook Graph API để reply hoặc xóa comment         |
+| Retry Service                             | 3003 | Xử lý retry và dead letter cho các command thất bại      |
 
 Các thành phần hỗ trợ:
 
-| Thành phần | Vai trò |
-|---|---|
-| Kafka | Message broker trung gian giữa các service |
-| Kafka UI | Theo dõi topic, message và consumer group |
-| Gemini API | Phân tích nội dung bình luận và tạo nội dung phản hồi |
-| Facebook Graph API | Thực hiện reply hoặc xóa comment trên Facebook Page |
-| Supabase | Lưu idempotency key và log xử lý command |
+| Thành phần         | Vai trò                                                                      |
+| ------------------ | ---------------------------------------------------------------------------- |
+| Kafka              | Message broker trung gian giữa các service                                   |
+| Kafka UI           | Theo dõi topic, message và consumer group                                    |
+| Kafka Exporter     | Export metric Kafka để Prometheus theo dõi offset topic                      |
+| Prometheus         | Theo dõi metric Kafka và kích hoạt cảnh báo khi `dead_letter` có message mới |
+| Alertmanager       | Nhận alert từ Prometheus và gửi cảnh báo qua Email hoặc Slack                |
+| Gemini API         | Phân tích nội dung bình luận và tạo nội dung phản hồi                        |
+| Facebook Graph API | Thực hiện reply hoặc xóa comment trên Facebook Page                          |
+| Supabase           | Lưu idempotency key và log xử lý command                                     |
 
 ---
 
@@ -85,6 +89,32 @@ Backend API
 Facebook Page
 ```
 
+Luồng cảnh báo `dead_letter`:
+
+```text
+Retry Service
+    |
+    | publish failed message
+    v
+Kafka topic: dead_letter
+    |
+    | export topic offset
+    v
+Kafka Exporter
+    |
+    | scrape metrics
+    v
+Prometheus
+    |
+    | trigger alert rule
+    v
+Alertmanager
+    |
+    | send alert
+    v
+Admin
+```
+
 ---
 
 ## 5. Cấu trúc thư mục
@@ -115,6 +145,11 @@ NguyenBinhMinh_FBPageAPI/
 │   ├── Services/
 │   ├── Dockerfile
 │   ├── Program.cs
+│   ├── prometheus/
+│   │   ├── prometheus.yml
+│   │   └── alert_rules.yml
+│   ├── alertmanager/
+│   │   └── alertmanager.yml
 │   └── NguyenBinhMinh_FBPageAPI.csproj
 │
 ├── RetryService/
@@ -141,12 +176,12 @@ Webhook Service là service tiếp nhận dữ liệu đầu vào từ Facebook 
 
 Chức năng:
 
-- Xác thực webhook với Meta.
-- Nhận HTTP POST webhook từ Facebook.
-- Đọc payload sự kiện bình luận.
-- Chuẩn hóa payload thành `NormalizedEvent`.
-- Bỏ qua comment do chính Page tạo ra để tránh vòng lặp tự reply.
-- Publish event vào Kafka topic `raw_events`.
+* Xác thực webhook với Meta.
+* Nhận HTTP POST webhook từ Facebook.
+* Đọc payload sự kiện bình luận.
+* Chuẩn hóa payload thành `NormalizedEvent`.
+* Bỏ qua comment do chính Page tạo ra để tránh vòng lặp tự reply.
+* Publish event vào Kafka topic `raw_events`.
 
 ---
 
@@ -156,20 +191,20 @@ Core Service xử lý nghiệp vụ chính sau khi nhận event từ Kafka.
 
 Chức năng:
 
-- Consume Kafka topic `raw_events`.
-- Kiểm tra spam bằng rule-based detection.
-- Gọi Gemini API để phân tích bình luận.
-- Xác định intent, sentiment, spam và nội dung không phù hợp.
-- Quyết định hành động xử lý.
-- Publish command vào Kafka topic `reply_commands`.
+* Consume Kafka topic `raw_events`.
+* Kiểm tra spam bằng rule-based detection.
+* Gọi Gemini API để phân tích bình luận.
+* Xác định intent, sentiment, spam và nội dung không phù hợp.
+* Quyết định hành động xử lý.
+* Publish command vào Kafka topic `reply_commands`.
 
 Các action chính:
 
-| Action | Ý nghĩa |
-|---|---|
-| `reply` | Trả lời bình luận |
+| Action           | Ý nghĩa                              |
+| ---------------- | ------------------------------------ |
+| `reply`          | Trả lời bình luận                    |
 | `delete_comment` | Xóa bình luận spam hoặc nội dung xấu |
-| `none` | Không thực hiện hành động |
+| `none`           | Không thực hiện hành động            |
 
 ---
 
@@ -179,13 +214,13 @@ Backend API là service duy nhất thực hiện gọi Facebook Graph API.
 
 Chức năng:
 
-- Consume Kafka topic `reply_commands`.
-- Consume Kafka topic `send_retry`.
-- Kiểm tra idempotency key để tránh xử lý trùng.
-- Gọi Facebook Graph API để reply comment.
-- Gọi Facebook Graph API để xóa comment spam hoặc nội dung không phù hợp.
-- Publish message lỗi vào `send_failed` nếu gọi Facebook API thất bại.
-- Lưu command log và idempotency key vào Supabase.
+* Consume Kafka topic `reply_commands`.
+* Consume Kafka topic `send_retry`.
+* Kiểm tra idempotency key để tránh xử lý trùng.
+* Gọi Facebook Graph API để reply comment.
+* Gọi Facebook Graph API để xóa comment spam hoặc nội dung không phù hợp.
+* Publish message lỗi vào `send_failed` nếu gọi Facebook API thất bại.
+* Lưu command log và idempotency key vào Supabase.
 
 ---
 
@@ -195,12 +230,28 @@ Retry Service xử lý các command thất bại khi Backend API gọi Facebook 
 
 Chức năng:
 
-- Consume Kafka topic `send_failed`.
-- Tăng `RetryCount`.
-- Chờ theo cơ chế exponential backoff.
-- Publish lại command vào topic `send_retry`.
-- Nếu quá số lần retry, publish vào topic `dead_letter`.
+* Consume Kafka topic `send_failed`.
+* Tăng `RetryCount`.
+* Chờ theo cơ chế exponential backoff.
+* Publish lại command vào topic `send_retry`.
+* Nếu quá số lần retry, publish vào topic `dead_letter`.
 
+---
+
+### 6.5. Monitoring và Alerting
+
+Hệ thống sử dụng Prometheus, Alertmanager và Kafka Exporter để cảnh báo khi topic `dead_letter` có message mới.
+
+Chức năng:
+
+* Kafka Exporter đọc metric từ Kafka.
+* Prometheus scrape metric từ Kafka Exporter.
+* Prometheus kiểm tra offset của topic `dead_letter`.
+* Nếu offset `dead_letter` tăng, Prometheus kích hoạt alert rule.
+* Alertmanager nhận alert và gửi cảnh báo qua Email hoặc Slack.
+* Admin kiểm tra nội dung message lỗi trong Kafka UI.
+
+---
 
 ## 7. Supabase
 
@@ -208,29 +259,34 @@ Supabase được dùng để lưu dữ liệu phục vụ chống xử lý trù
 
 Các bảng chính:
 
-| Bảng | Chức năng |
-|---|---|
+| Bảng               | Chức năng                                     |
+| ------------------ | --------------------------------------------- |
 | `idempotency_keys` | Lưu key để tránh reply hoặc xóa comment trùng |
-| `command_logs` | Lưu log quá trình xử lý command |
+| `command_logs`     | Lưu log quá trình xử lý command               |
 
 ---
 
 ## 8. Công nghệ sử dụng
 
-- ASP.NET Core Web API
-- C#
-- Apache Kafka
-- Kafka UI
-- Docker
-- Facebook Graph API
-- Gemini API
-- Supabase PostgreSQL
-- Swagger UI
-- Confluent.Kafka
-- Npgsql
+* ASP.NET Core Web API
+* C#
+* Apache Kafka
+* Kafka UI
+* Kafka Exporter
+* Prometheus
+* Alertmanager
+* Docker
+* Facebook Graph API
+* Gemini API
+* Supabase PostgreSQL
+* Swagger UI
+* Confluent.Kafka
+* Npgsql
+
+---
 
 ## 9. Tác giả
 
 Nguyễn Bình Minh aka sHunOrinn
 
-Thực hành hệ thống quản lý Facebook Page phân tán bằng ASP.NET Core, Kafka, Docker, Gemini API, Facebook Graph API và Supabase.
+Thực hành hệ thống quản lý Facebook Page phân tán bằng ASP.NET Core, Kafka, Docker, Gemini API, Facebook Graph API, Supabase, Prometheus và Alertmanager.
