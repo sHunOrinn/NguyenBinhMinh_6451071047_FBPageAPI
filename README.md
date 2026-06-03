@@ -25,6 +25,8 @@ Hệ thống được tách thành nhiều service độc lập nhằm dễ mở
 - Chống gửi phản hồi trùng bằng idempotency key.
 - Retry khi gọi Facebook Graph API thất bại.
 - Đưa message lỗi quá số lần retry vào topic `dead_letter`.
+- Thêm Prometheus, Alertmanager và Kafka Exporter để cảnh báo `dead_letter`.
+- Gửi thông báo qua gmail khi có message vào `dead_letter`.
 - Lưu idempotency key và command log bằng Supabase.
 
 ---
