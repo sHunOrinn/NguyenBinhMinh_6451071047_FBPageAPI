@@ -105,11 +105,11 @@ namespace BackendAPI.Services
                             command.CommentId,
                             command.Action);
 
-                        await _commandLogService.SaveAsync(
-                            command,
-                            "duplicate_ignored",
-                            null,
-                            stoppingToken);
+                        //await _commandLogService.SaveAsync(
+                        //    command,
+                        //    "duplicate_ignored",
+                        //    null,
+                        //    stoppingToken);
 
                         consumer.Commit(message);
                         continue;
